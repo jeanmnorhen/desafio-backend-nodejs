@@ -77,8 +77,14 @@ O projeto foi construído utilizando **Clean Architecture** (Ports and Adapters)
 
 ---
 
+### Segurança e Qualidade (Testes e Limites)
+- **Rate Limiting (Anti-DDoS):** A aplicação Fastify conta com o plugin oficial `@fastify/rate-limit` já configurado nativamente, aplicando um limite de 100 requisições/minuto por IP para proteger nosso faturamento da OpenAI e banco de dados.
+- **Suíte de Testes (Vitest):** A arquitetura foi validada com testes unitários cobrindo desde a barreira criptográfica (`signature.ts`) até o comportamento completo dos Casos de Uso (Idempotência, Fluxos de Falha e Sucesso com a Fila). Foram utilizados *mocks* do Vitest para isolar as dependências e validar puramente a lógica do negócio.
+
+---
+
 ## 🔮 O que eu deixaria para depois (Evoluções)
 
-1. **Chunking Avançado da Base de Conhecimento (Vector DB):** Em vez de jogar 100% da base no System Prompt (o que gasta tokens absurdamente e afeta o foco da LLM se a empresa crescer muito), o ideal seria armazenar o conteúdo em um banco de dados Vetorial (como Qdrant, Pinecone ou pgvector no próprio Postgres) e fazer busca semântica em tempo real para injetar apenas as 3 FAQs mais relevantes do tema.
-2. **Rate Limiting no Fastify**: Adicionar limite de chamadas na API Webhook como medida extra de segurança contra ataques DDoS, usando o plugin oficial `@fastify/rate-limit`.
-3. **Múltiplos Canais**: Como o núcleo é Clean Architecture, poderíamos facilmente suportar Telegram ou Instagram apenas implementando novos Controllers de entrada e um Service de envio genérico implementando a mesma Port.
+1. **Chunking Avançado da Base de Conhecimento (Vector DB):** Em vez de jogar 100% da base de FAQs no System Prompt (o que gasta tokens e afeta o desempenho da LLM à medida que o conhecimento cresce), o ideal seria implementar uma busca vetorial (RAG autêntico) usando `pgvector` no PostgreSQL ou um banco como o Pinecone. O worker faria uma busca de similaridade e injetaria apenas os trechos relevantes.
+
+
