@@ -5,7 +5,7 @@ import type { Logger } from '../logger/pino.js';
 
 export async function createServer(logger: Logger) {
   const fastify = Fastify({
-    logger: logger as any,
+    loggerInstance: logger as any,
   });
 
   await fastify.register(cors, { origin: true });
