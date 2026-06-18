@@ -83,7 +83,7 @@ O projeto foi construído utilizando **Clean Architecture** (Ports and Adapters)
 
 ---
 
-## 🔮 O que eu deixaria para depois (Evoluções)
+## 🔮 O que faria diferente com mais tempo.
 
 1. **Chunking Avançado da Base de Conhecimento (Vector DB):** Em vez de jogar 100% da base de FAQs no System Prompt (o que gasta tokens e afeta o desempenho da LLM à medida que o conhecimento cresce), o ideal seria implementar uma busca vetorial (RAG autêntico) usando `pgvector` no PostgreSQL ou um banco como o Pinecone. O worker faria uma busca de similaridade e injetaria apenas os trechos relevantes.
 
