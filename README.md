@@ -189,50 +189,21 @@ npm run test:watch    # Modo watch
 
 ## 📌 Premissas Assumidas
 
-1. **`messageId` (wamid.XXX) é globalmente único** — pilar da idempotência. Se a Meta mudar esse formato, precisamos de outra estratégia.
-2. **Tenant "NeoFibra" pré-existe** — criado no seed com `phoneNumberId: 123456789012345` alinhado com o mock.
-3. **Uma conversa por par (tenant, contact)** — se um mesmo contato abrir múltiplas conversas, o sistema mantém o histórico linear. Em produção seria necessário suporte a múltiplas conversas simultâneas (ex: `conversationId` vindo no webhook).
-4. **Apenas mensagens de texto** — mídia, áudio e documentos são ignorados. O webhook atual ignora `type !== 'text'`.
+- **Idempotência**: Assumimos que o campo `messageId` (ex: `wamid.XXX`) que vem da Meta é globalmente único e é o pilar da verificação de dupla entrega. Se uma requisição falhar no parse, mas já tiver o messageId salvo, é descartada.
+- **Tenant Default**: O script de seed (`npm run db:seed`) já deixa um Tenant (NeoFibra) criado de antemão e alinhado com o `phoneNumberId` enviado no *mock* (`123456789012345`).
+- **Logando JSON**: Em ambiente de desenvolvimento, o Pino foi instruído a usar `pino-pretty` para fácil leitura. Em produção, ele exporta NDJSON puramente otimizado.
+- **Context Window**: Por simplicidade, estamos enviando as últimas 20 mensagens como histórico para a LLM, além de todo o texto das FAQs.
 
 ---
 
-## 🔮 O Que Deixei para Depois (e Por Quê)
-
-1. **Vector Search / Chunking da Knowledge Base**
-   Injetar toda a KB no system prompt não escala — com 50+ páginas de FAQ, o custo de tokens explode e a qualidade da resposta degrada. A evolução natural é chunking + `pgvector` para busca de similaridade, injetando só os trechos relevantes.
-   *Por que deixei:* Para o volume atual (3 arquivos, ~5KB), o custo extra é irrelevante. A complexidade de implementar embedding e vector search não se justifica agora.
-
-2. **Múltiplos canais (Instagram, Messenger, SMS)**
-   Cada canal tem formato de webhook diferente. A `IMetaService` poderia ser generalizada para `IChannelService`, mas o desafio é especificamente WhatsApp.
-   *Por que deixei:* YAGNI — até que o produto precise de outro canal.
-
-3. **Cache de Conversação (Redis)**
-   Hoje o histórico é lido do Postgres a cada job. Para alta escala, um cache Redis com TTL reduziria latência e carga no banco.
-   *Por que deixei:* O Postgres aguenta dezenas de milhares de conversas sem problema. Cache adiciona complexidade de invalidação.
-
-4. **Gestão de Limites de Taxa da Meta**
-   A Meta tem limites de mensagens por segundo por número de telefone. Um `rate-limiter` interno para envios evitaria bloqueios.
-   *Por que deixei:* O mock da Meta não impõe limites, e a implementação real depende do tier do WABA.
-
-5. **Webhook Replay / Dead Letter Queue**
-   Mensagens que falham permanentemente vão para uma DLQ para inspeção manual.
-   *Por que deixei:* BullMQ já oferece esse mecanismo, mas configurar a DLQ e um dashboard de replay adiciona complexidade de UI que não estava no escopo.
-
-6. **Testes de Integração com Containers**
-   Testes com Postgres e Redis reais via Testcontainers dariam mais confiança que os mocks atuais.
-   *Por que deixei:* O setup de containers em CI aumenta o tempo de execução. Os testes unitários já cobrem a lógica de negócio.
+### Segurança e Qualidade (Testes e Limites)
+- **Rate Limiting (Anti-DDoS):** A aplicação Fastify conta com o plugin oficial `@fastify/rate-limit` já configurado nativamente, aplicando um limite de 100 requisições/minuto por IP para proteger nosso faturamento da OpenAI e banco de dados.
+- **Suíte de Testes (Vitest):** A arquitetura foi validada com testes unitários cobrindo desde a barreira criptográfica (`signature.ts`) até o comportamento completo dos Casos de Uso (Idempotência, Fluxos de Falha e Sucesso com a Fila). Foram utilizados *mocks* do Vitest para isolar as dependências e validar puramente a lógica do negócio.
 
 ---
 
-## 📦 Scripts Disponíveis
+## 🔮 O que eu deixaria para depois (Evoluções)
 
-| Script | Descrição |
-|--------|-----------|
-| `npm run dev` | Servidor HTTP com hot-reload (tsx watch) |
-| `npm run dev:worker` | Worker com hot-reload |
-| `npm run build` | Compilação TypeScript |
-| `npm test` | Testes unitários (Vitest) |
-| `npm run typecheck` | Verificação de tipos |
-| `npm run db:migrate` | Executa migrations pendentes |
-| `npm run db:seed` | Popula tenant e dados iniciais |
-| `npm run db:generate` | Gera migrations do schema Drizzle |
+1. **Chunking Avançado da Base de Conhecimento (Vector DB):** Em vez de jogar 100% da base de FAQs no System Prompt (o que gasta tokens e afeta o desempenho da LLM à medida que o conhecimento cresce), o ideal seria implementar uma busca vetorial (RAG autêntico) usando `pgvector` no PostgreSQL ou um banco como o Pinecone. O worker faria uma busca de similaridade e injetaria apenas os trechos relevantes.
+
+
