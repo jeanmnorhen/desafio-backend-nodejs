@@ -170,20 +170,47 @@ A ferramenta `check_order_status` é registrada no modelo. Quando o cliente perg
 
 ---
 
-## 🧪 Testes
+## 🧪 Cobertura de Testes
 
-3 suites com **Vitest**, cobrindo:
+3 suites com **Vitest** — **7 cenários** no total, cobrindo validação criptográfica, fluxos de idempotência, e o pipeline completo LLM + envio.
 
-| Teste | O que cobre |
-|-------|------------|
-| `signature.test.ts` | HMAC válido, inválido, mal formatado |
-| `ReceiveWebhookUseCase.test.ts` | Tenant não encontrado, fluxo feliz, mensagem duplicada |
-| `ProcessMessageJobUseCase.test.ts` | Fluxo feliz (LLM → envio), mensagem já processada (pula) |
+### 1. `signature.test.ts` — Validação de Assinatura HMAC-SHA256
+
+Arquivo: `src/infrastructure/http/middlewares/__tests__/signature.test.ts`
+
+| # | Caso de teste | O que valida | Asserções |
+|---|--------------|-------------|-----------|
+| 1 | Assinatura válida | Gera HMAC-SHA256 com `crypto.createHmac` sobre o raw body e compara com `sha256=<hash>` | `verifySignatureRaw` retorna `true` |
+| 2 | Assinatura inválida | Passa um hash qualquer (`sha256=invalidhash12345`) com secret correto | `verifySignatureRaw` retorna `false` |
+| 3 | Assinatura mal formatada/vazia | Testa string vazia (`''`) e formato inválido sem prefixo (`'invalid'`) | `verifySignatureRaw` retorna `false` em ambos |
+
+### 2. `ReceiveWebhookUseCase.test.ts` — Caso de Uso: Recebimento do Webhook
+
+Arquivo: `src/use-cases/__tests__/ReceiveWebhookUseCase.test.ts`
+
+| # | Caso de teste | O que valida | Asserções |
+|---|--------------|-------------|-----------|
+| 1 | Tenant não encontrado | Quando `findByWaPhoneNumberId` retorna `null` | Retorna `{ ignored: true, reason: 'Unknown tenant' }`; `contactRepo.findOrCreate` **não** é chamado |
+| 2 | Fluxo feliz | Tenant, contato e conversa existem; mensagem é criada com `direction: 'INBOUND'` | Retorna `{ duplicate: false, messageId, conversationId }`; `queueService.enqueue` é chamado com `{ tenantId, messageId, conversationId, contactWaId }` |
+| 3 | Idempotência (mensagem duplicada) | `messageRepo.create` retorna `null` simulando violação de UNIQUE no `wa_message_id` | Retorna `{ duplicate: true }`; `queueService.enqueue` **não** é chamado; `logger.info` registra `'Duplicate message received, ignoring'` |
+
+### 3. `ProcessMessageJobUseCase.test.ts` — Caso de Uso: Processamento da Mensagem
+
+Arquivo: `src/use-cases/__tests__/ProcessMessageJobUseCase.test.ts`
+
+| # | Caso de teste | O que valida | Asserções |
+|---|--------------|-------------|-----------|
+| 1 | Fluxo feliz completo | Mensagem `RECEIVED` → busca tenant + histórico → chama LLM → cria OUTBOUND → envia via Meta | `updateStatus('msg-1', 'PROCESSING')` chamado; `llmService.chat` chamado; `messageRepo.create` chamado com `{ direction: 'OUTBOUND', body }`; `metaService.sendMessage` chamado com `(phoneNumberId, to, body)`; `updateStatus('msg-out-1', 'SENT')` chamado |
+| 2 | Mensagem já processada | Mensagem com status `PROCESSING` (não `RECEIVED`) é ignorada | `tenantRepo.findById` **não** é chamado; `logger.info` registra `'Message already processed or processing'` |
+
+### Resumo
 
 ```bash
-npm test              # Executa uma vez
-npm run test:watch    # Modo watch
+npm test              # vitest run — executa todos os 7 cenários
+npm run test:watch    # vitest — modo watch para desenvolvimento
 ```
+
+**Estratégia de mocks:** Todos os testes usam `vi.fn()` para isolar o caso de uso das dependências externas (banco, fila, LLM, Meta API). Nenhuma chamada real a serviço externo acontece durante os testes.
 
 ---
 
